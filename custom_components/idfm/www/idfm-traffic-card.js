@@ -163,11 +163,13 @@ class IdfmTrafficCard extends HTMLElement {
   }
 }
 
-customElements.define("idfm-traffic-card", IdfmTrafficCard);
+if (!customElements.get("idfm-traffic-card")) {
+  customElements.define("idfm-traffic-card", IdfmTrafficCard);
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "idfm-traffic-card",
-  name: "IDFM - État du trafic",
-  description: "Affiche l'état du trafic d'une ou plusieurs lignes IDFM.",
-});
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "idfm-traffic-card",
+    name: "IDFM - État du trafic",
+    description: "Affiche l'état du trafic d'une ou plusieurs lignes IDFM.",
+  });
+}

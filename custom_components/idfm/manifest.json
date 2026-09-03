@@ -3,7 +3,7 @@
   "name": "IDFM - Ile-de-France Mobilités",
   "codeowners": ["@jordanbrn"],
   "config_flow": true,
-  "dependencies": ["http"],
+  "dependencies": ["http", "frontend"],
   "documentation": "https://github.com/jordanbrn/ha-idfm",
   "integration_type": "hub",
   "iot_class": "cloud_polling",

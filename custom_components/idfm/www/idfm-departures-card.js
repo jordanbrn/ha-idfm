@@ -133,11 +133,13 @@ class IdfmDeparturesCard extends HTMLElement {
   }
 }
 
-customElements.define("idfm-departures-card", IdfmDeparturesCard);
+if (!customElements.get("idfm-departures-card")) {
+  customElements.define("idfm-departures-card", IdfmDeparturesCard);
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "idfm-departures-card",
-  name: "IDFM - Prochains départs",
-  description: "Affiche les prochains départs d'une ou plusieurs stations IDFM.",
-});
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "idfm-departures-card",
+    name: "IDFM - Prochains départs",
+    description: "Affiche les prochains départs d'une ou plusieurs stations IDFM.",
+  });
+}
