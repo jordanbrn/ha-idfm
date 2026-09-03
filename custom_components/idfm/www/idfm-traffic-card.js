@@ -171,5 +171,7 @@ if (!customElements.get("idfm-traffic-card")) {
     type: "idfm-traffic-card",
     name: "IDFM - État du trafic",
     description: "Affiche l'état du trafic d'une ou plusieurs lignes IDFM.",
+    preview: false,
+    documentationURL: "https://github.com/jordanbrn/ha-idfm",
   });
 }

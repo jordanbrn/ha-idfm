@@ -141,5 +141,7 @@ if (!customElements.get("idfm-departures-card")) {
     type: "idfm-departures-card",
     name: "IDFM - Prochains départs",
     description: "Affiche les prochains départs d'une ou plusieurs stations IDFM.",
+    preview: false,
+    documentationURL: "https://github.com/jordanbrn/ha-idfm",
   });
 }
