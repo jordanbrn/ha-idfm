@@ -21,7 +21,6 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
     global _registered
     if _registered:
         return
-    _registered = True
 
     www_dir = str(Path(__file__).parent / "www")
 
@@ -39,3 +38,8 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
         add_extra_js_url(hass, f"{URL_BASE}/{filename}")
 
     hass.http.register_view(IdfmIconView(hass))
+
+    # Only mark done once every step above actually succeeded, so a failure
+    # gets retried on the next entry setup / HA restart instead of being
+    # silently stuck forever.
+    _registered = True

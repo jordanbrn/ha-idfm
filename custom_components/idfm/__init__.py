@@ -52,7 +52,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    await async_register_frontend(hass)
+    try:
+        await async_register_frontend(hass)
+    except Exception:  # noqa: BLE001 - the cards are a bonus, sensors must not fail
+        _LOGGER.exception("failed to register IDFM Lovelace cards")
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
