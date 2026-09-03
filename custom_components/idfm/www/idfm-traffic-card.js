@@ -25,6 +25,10 @@ class IdfmTrafficCard extends HTMLElement {
     return { entities: [] };
   }
 
+  static getConfigElement() {
+    return document.createElement("idfm-traffic-card-editor");
+  }
+
   _build() {
     const card = document.createElement("ha-card");
     if (this._config.title) card.header = this._config.title;
@@ -85,6 +89,21 @@ class IdfmTrafficCard extends HTMLElement {
         return "#c62828";
       default:
         return "var(--divider-color)";
+    }
+  }
+
+  static _statusLabel(state) {
+    switch (state) {
+      case "normal":
+        return "Trafic normal";
+      case "info":
+        return "Information trafic";
+      case "perturbe":
+        return "Trafic perturbé";
+      case "bloque":
+        return "Trafic interrompu";
+      default:
+        return state;
     }
   }
 
@@ -155,12 +174,58 @@ class IdfmTrafficCard extends HTMLElement {
         this._renderTextBadge(badge, shortName, color, textColor, attrs.mode);
       }
 
-      row.querySelector(".idfm-line").textContent = attrs.line_name || shortName;
+      row.querySelector(".idfm-line").textContent = IdfmTrafficCard._statusLabel(stateObj.state);
       row.querySelector(".idfm-message").textContent = attrs.message || "Trafic normal";
       row.querySelector(".idfm-body").style.setProperty("--idfm-status-color", statusColor);
       row.title = attrs.title || "";
     }
   }
+}
+
+class IdfmTrafficCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config || {};
+    this._ensureForm();
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _ensureForm() {
+    if (this._form) return;
+    this._form = document.createElement("ha-form");
+    this._form.schema = [
+      { name: "title", selector: { text: {} } },
+      {
+        name: "entities",
+        selector: { entity: { multiple: true, filter: { domain: "sensor" } } },
+      },
+    ];
+    this._form.computeLabel = (schema) => {
+      const labels = { title: "Titre", entities: "Lignes à afficher" };
+      return labels[schema.name] || schema.name;
+    };
+    this._form.addEventListener("value-changed", (ev) => {
+      this._config = ev.detail.value;
+      this.dispatchEvent(
+        new CustomEvent("config-changed", { detail: { config: this._config } })
+      );
+    });
+    this.appendChild(this._form);
+  }
+
+  _render() {
+    if (!this._form) return;
+    this._form.hass = this._hass;
+    this._form.data = this._config;
+  }
+}
+
+if (!customElements.get("idfm-traffic-card-editor")) {
+  customElements.define("idfm-traffic-card-editor", IdfmTrafficCardEditor);
 }
 
 if (!customElements.get("idfm-traffic-card")) {

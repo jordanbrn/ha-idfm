@@ -25,6 +25,12 @@ _LOGGER = logging.getLogger(__name__)
 ALLOWED_CHANNELS = {"Perturbation"}
 CHANNEL_SEVERITY = {"Perturbation": 0, "Information": 1}
 
+# IDFM tags multi-week planned-works campaigns as "Perturbation" too (they do genuinely
+# cut service, just only during certain hours each day), which a plain validity-window
+# check can't tell apart from a real ongoing incident. A live incident's window is a few
+# hours at most, so anything wider is treated as an advance notice, not current state.
+MAX_LIVE_DURATION = timedelta(hours=24)
+
 
 def active_messages(messages: list, now: datetime | None = None) -> list:
     """Return the currently-active service disruptions (matches station screens)."""
@@ -33,10 +39,13 @@ def active_messages(messages: list, now: datetime | None = None) -> list:
     for msg in messages:
         if msg.type not in ALLOWED_CHANNELS:
             continue
-        if msg.start_time.astimezone(timezone.utc) <= now <= msg.end_time.astimezone(
-            timezone.utc
-        ):
-            active.append(msg)
+        start = msg.start_time.astimezone(timezone.utc)
+        end = msg.end_time.astimezone(timezone.utc)
+        if not (start <= now <= end):
+            continue
+        if end - start > MAX_LIVE_DURATION:
+            continue
+        active.append(msg)
     return active
 
 
@@ -85,14 +94,14 @@ class IdfmDeparturesCoordinator(DataUpdateCoordinator):
         api: IDFMApi,
         stop_id: str,
         line_id: str | None,
-        direction: str | None,
-        destination: str | None,
+        directions: list[str],
+        destinations: list[str],
     ) -> None:
         self.api = api
         self.stop_id = stop_id
         self.line_id = line_id
-        self.direction = direction
-        self.destination = destination
+        self.directions = directions
+        self.destinations = destinations
         super().__init__(
             hass,
             _LOGGER,
@@ -102,16 +111,23 @@ class IdfmDeparturesCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         try:
-            visits = await self.api.get_traffic(
-                self.stop_id, self.destination, self.direction, self.line_id
-            )
+            # No filter is passed to the API - a stop/line can have more than one
+            # direction or destination selected, and the API only supports a single
+            # value each, so all visits are fetched and filtered here instead.
+            visits = await self.api.get_traffic(self.stop_id, line_id=self.line_id)
         except Exception as err:  # noqa: BLE001 - surfaced to the coordinator
             raise UpdateFailed(f"error fetching IDFM departures: {err}") from err
 
+        has_filters = bool(self.directions or self.destinations)
         now = datetime.now(timezone.utc)
         departures = []
         for visit in visits:
             if visit.schedule is None or visit.schedule <= now:
+                continue
+            if has_filters and (
+                visit.direction not in self.directions
+                and visit.destination_name not in self.destinations
+            ):
                 continue
             minutes = max(0, round((visit.schedule - now).total_seconds() / 60))
             departures.append(

@@ -12,8 +12,8 @@ from .const import (
     ATTR_CHANNEL,
     ATTR_COLOR,
     ATTR_DEPARTURES,
-    ATTR_DESTINATION,
-    ATTR_DIRECTION,
+    ATTR_DESTINATIONS,
+    ATTR_DIRECTIONS,
     ATTR_DISRUPTION_COUNT,
     ATTR_LINE_ID,
     ATTR_LINE_NAME,
@@ -23,8 +23,8 @@ from .const import (
     ATTR_STOP_NAME,
     ATTR_TEXT_COLOR,
     ATTR_TITLE,
-    CONF_DESTINATION,
-    CONF_DIRECTION,
+    CONF_DESTINATIONS,
+    CONF_DIRECTIONS,
     CONF_KIND,
     CONF_LINE,
     CONF_LINE_NAME,
@@ -131,6 +131,14 @@ class IdfmDeparturesSensor(CoordinatorEntity[IdfmDeparturesCoordinator], SensorE
         self._attr_unique_id = entry.entry_id
         self._attr_name = entry.title
         self._attr_icon = MODE_ICONS.get(entry.data.get(CONF_MODE), "mdi:train")
+        self._line_info: dict = {}
+
+    @property
+    def entity_picture(self) -> str | None:
+        line_id = self._entry.data.get(CONF_LINE)
+        if not line_id:
+            return None
+        return f"/api/idfm/icon/{line_id}?style=colored&usage=signage_spaces"
 
     @property
     def native_value(self) -> int | None:
@@ -140,10 +148,24 @@ class IdfmDeparturesSensor(CoordinatorEntity[IdfmDeparturesCoordinator], SensorE
     @property
     def extra_state_attributes(self) -> dict:
         departures = self.coordinator.data or []
+        line_info = self._line_info
         return {
             ATTR_STOP_NAME: self._entry.data[CONF_STOP_NAME],
             ATTR_LINE_NAME: self._entry.data.get(CONF_LINE_NAME),
-            ATTR_DIRECTION: self._entry.data.get(CONF_DIRECTION),
-            ATTR_DESTINATION: self._entry.data.get(CONF_DESTINATION),
-            ATTR_DEPARTURES: departures[:3],
+            ATTR_SHORT_NAME: line_info.get("short_name", self._entry.data.get(CONF_LINE_NAME)),
+            ATTR_COLOR: line_info.get("color", "#0064B0"),
+            ATTR_TEXT_COLOR: line_info.get("text_color", "#FFFFFF"),
+            ATTR_MODE: self._entry.data.get(CONF_MODE),
+            ATTR_DIRECTIONS: self._entry.data.get(CONF_DIRECTIONS, []),
+            ATTR_DESTINATIONS: self._entry.data.get(CONF_DESTINATIONS, []),
+            ATTR_DEPARTURES: departures[:10],
         }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        line_id = self._entry.data.get(CONF_LINE)
+        if line_id:
+            self._line_info = await LineInfoRepository.get(
+                async_get_clientsession(self.hass), line_id
+            )
+            self.async_write_ha_state()

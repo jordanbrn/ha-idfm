@@ -12,8 +12,8 @@ CONF_LINE = "line_id"
 CONF_LINE_NAME = "line_name"
 CONF_STOP = "stop_id"
 CONF_STOP_NAME = "stop_name"
-CONF_DIRECTION = "direction"
-CONF_DESTINATION = "destination"
+CONF_DIRECTIONS = "directions"
+CONF_DESTINATIONS = "destinations"
 
 KIND_TRAFFIC = "traffic"
 KIND_DEPARTURES = "departures"
@@ -44,8 +44,8 @@ ATTR_CHANNEL = "channel"
 ATTR_DISRUPTION_COUNT = "disruption_count"
 
 ATTR_STOP_NAME = "stop_name"
-ATTR_DIRECTION = "direction"
-ATTR_DESTINATION = "destination"
+ATTR_DIRECTIONS = "directions"
+ATTR_DESTINATIONS = "destinations"
 ATTR_DEPARTURES = "departures"
 
 LINES_DATASET_URL = (

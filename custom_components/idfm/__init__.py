@@ -9,8 +9,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from idfm_api import IDFMApi
 
 from .const import (
-    CONF_DESTINATION,
-    CONF_DIRECTION,
+    CONF_DESTINATIONS,
+    CONF_DIRECTIONS,
     CONF_KIND,
     CONF_LINE,
     CONF_STOP,
@@ -42,8 +42,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             api,
             entry.data[CONF_STOP],
             entry.data.get(CONF_LINE),
-            entry.data.get(CONF_DIRECTION),
-            entry.data.get(CONF_DESTINATION),
+            entry.data.get(CONF_DIRECTIONS, []),
+            entry.data.get(CONF_DESTINATIONS, []),
         )
     else:
         _LOGGER.error("unknown IDFM entry kind: %s", kind)

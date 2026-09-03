@@ -11,13 +11,14 @@ from typing import Any
 import voluptuous as vol
 from aiohttp import ClientError
 from homeassistant import config_entries
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from idfm_api import IDFMApi
 from idfm_api.models import TransportType
 
 from .const import (
-    CONF_DESTINATION,
-    CONF_DIRECTION,
+    CONF_DESTINATIONS,
+    CONF_DIRECTIONS,
     CONF_KIND,
     CONF_LINE,
     CONF_LINE_NAME,
@@ -44,7 +45,9 @@ KIND_LABELS = {
     KIND_DEPARTURES: "Prochains départs d'une station",
 }
 
-ANY_DIRECTION = "Toutes les directions"
+CONF_DIRECTION_FILTER = "direction_filter"
+DIR_PREFIX = "dir:"
+DEST_PREFIX = "dest:"
 
 # A line that is always in service, used as a lightweight ping to check the API key.
 _VALIDATION_LINE_REF = "STIF:Line::C01742:"
@@ -171,18 +174,27 @@ class IdfmConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_direction(self, user_input=None):
-        if user_input is not None:
-            self.data[CONF_DIRECTION] = None
-            self.data[CONF_DESTINATION] = None
-            choice = user_input[CONF_DIRECTION]
-            if choice.startswith("Dir: "):
-                self.data[CONF_DIRECTION] = choice[len("Dir: ") :]
-            elif choice.startswith("Dest: "):
-                self.data[CONF_DESTINATION] = choice[len("Dest: ") :]
+        directions = await self._client.get_directions(
+            self.data[CONF_STOP], line_id=self.data[CONF_LINE]
+        )
+        destinations = await self._client.get_destinations(
+            self.data[CONF_STOP], line_id=self.data[CONF_LINE]
+        )
+        options = {f"{DIR_PREFIX}{d}": f"Direction : {d}" for d in directions if d}
+        options.update({f"{DEST_PREFIX}{d}": f"Destination : {d}" for d in destinations if d})
+
+        if user_input is not None or not options:
+            selected = user_input.get(CONF_DIRECTION_FILTER, []) if user_input else []
+            self.data[CONF_DIRECTIONS] = sorted(
+                s[len(DIR_PREFIX) :] for s in selected if s.startswith(DIR_PREFIX)
+            )
+            self.data[CONF_DESTINATIONS] = sorted(
+                s[len(DEST_PREFIX) :] for s in selected if s.startswith(DEST_PREFIX)
+            )
 
             uid = (
                 f"departures_{self.data[CONF_STOP]}_{self.data[CONF_LINE]}_"
-                f"{self.data[CONF_DIRECTION]}_{self.data[CONF_DESTINATION]}"
+                f"{self.data[CONF_DIRECTIONS]}_{self.data[CONF_DESTINATIONS]}"
             )
             await self.async_set_unique_id(uid)
             self._abort_if_unique_id_configured()
@@ -190,21 +202,16 @@ class IdfmConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             title = f"{self.data[CONF_STOP_NAME]} ({self.data[CONF_LINE_NAME]})"
             return self.async_create_entry(title=title, data=self.data)
 
-        directions = await self._client.get_directions(
-            self.data[CONF_STOP], line_id=self.data[CONF_LINE]
-        )
-        destinations = await self._client.get_destinations(
-            self.data[CONF_STOP], line_id=self.data[CONF_LINE]
-        )
-        options = (
-            [ANY_DIRECTION]
-            + [f"Dir: {d}" for d in directions if d]
-            + [f"Dest: {d}" for d in destinations if d]
-        )
-
         return self.async_show_form(
             step_id="direction",
             data_schema=vol.Schema(
-                {vol.Required(CONF_DIRECTION, default=options[0]): vol.In(options)}
+                {
+                    vol.Optional(CONF_DIRECTION_FILTER, default=[]): cv.multi_select(
+                        options
+                    )
+                }
             ),
+            description_placeholders={
+                "hint": "Ne cochez rien pour garder toutes les directions."
+            },
         )

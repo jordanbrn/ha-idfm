@@ -33,10 +33,10 @@
         }
       },
       "direction": {
-        "title": "Direction",
-        "description": "Filter departures by direction or destination, or keep all directions.",
+        "title": "Directions",
+        "description": "Check one or more directions/destinations to show. Leave unchecked to keep all directions.",
         "data": {
-          "direction": "Direction"
+          "direction_filter": "Directions / destinations"
         }
       }
     },
