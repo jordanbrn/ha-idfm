@@ -92,6 +92,10 @@ class IdfmDeparturesCard extends HTMLElement {
         color: var(--primary-text-color); }
       .idfm-departure-row.next .idfm-time,
       .idfm-departure-row.next .idfm-dest { color: var(--text-primary-color, #fff); }
+      .idfm-mission { flex: none; font-family: var(--code-font-family, monospace);
+        font-weight: 700; font-size: 12px; letter-spacing: 0.5px;
+        color: var(--secondary-text-color); }
+      .idfm-departure-row.next .idfm-mission { color: var(--text-primary-color, #fff); }
       .idfm-dest { flex: 1; min-width: 0; font-size: 13px; color: var(--secondary-text-color);
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .idfm-departure-row.next .idfm-dest { opacity: 0.9; }
@@ -176,6 +180,7 @@ class IdfmDeparturesCard extends HTMLElement {
             (d, i) => `
           <div class="idfm-departure-row${i === 0 ? " next" : ""}">
             <span class="idfm-time">${d.formatted || d.minutes + "min"}</span>
+            ${d.mission ? `<span class="idfm-mission">${d.mission}</span>` : ""}
             <span class="idfm-dest">${d.destination || ""}</span>
             ${d.platform ? `<span class="idfm-platform">${d.platform}</span>` : ""}
           </div>`

@@ -138,6 +138,7 @@ class IdfmDeparturesCoordinator(DataUpdateCoordinator):
                     "formatted": f"{minutes}min",
                     "time": visit.schedule.isoformat(),
                     "platform": visit.platform,
+                    "mission": visit.note,
                     "at_stop": visit.at_stop,
                     "status": visit.status,
                 }
