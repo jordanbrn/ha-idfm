@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Clé API IDFM (PRIM)",
+        "description": "Renseignez votre clé API obtenue gratuitement sur https://prim.iledefrance-mobilites.fr",
+        "data": {
+          "api_token": "Clé API"
+        }
+      },
+      "kind": {
+        "title": "Que souhaitez-vous suivre ?",
+        "data": {
+          "kind": "Type de suivi"
+        }
+      },
+      "mode": {
+        "title": "Mode de transport",
+        "data": {
+          "mode": "Mode de transport"
+        }
+      },
+      "line": {
+        "title": "Ligne",
+        "data": {
+          "line_id": "Ligne"
+        }
+      },
+      "stop": {
+        "title": "Station / arrêt",
+        "data": {
+          "stop_id": "Station / arrêt"
+        }
+      },
+      "direction": {
+        "title": "Direction",
+        "description": "Filtrez les départs par direction ou destination, ou gardez toutes les directions.",
+        "data": {
+          "direction": "Direction"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Clé API refusée, vérifiez qu'elle est correcte et active.",
+      "cannot_connect": "Impossible de contacter l'API IDFM.",
+      "unknown": "Erreur inattendue."
+    },
+    "abort": {
+      "no_lines": "Aucune ligne trouvée pour ce mode de transport.",
+      "no_stops": "Aucun arrêt trouvé pour cette ligne.",
+      "already_configured": "Ce suivi est déjà configuré."
+    }
+  }
+}

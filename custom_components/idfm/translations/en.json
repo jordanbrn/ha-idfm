@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "IDFM (PRIM) API key",
+        "description": "Enter the API key you obtained for free at https://prim.iledefrance-mobilites.fr",
+        "data": {
+          "api_token": "API key"
+        }
+      },
+      "kind": {
+        "title": "What do you want to track?",
+        "data": {
+          "kind": "Tracking type"
+        }
+      },
+      "mode": {
+        "title": "Transport mode",
+        "data": {
+          "mode": "Transport mode"
+        }
+      },
+      "line": {
+        "title": "Line",
+        "data": {
+          "line_id": "Line"
+        }
+      },
+      "stop": {
+        "title": "Station / stop",
+        "data": {
+          "stop_id": "Station / stop"
+        }
+      },
+      "direction": {
+        "title": "Direction",
+        "description": "Filter departures by direction or destination, or keep all directions.",
+        "data": {
+          "direction": "Direction"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "API key rejected, check that it is correct and active.",
+      "cannot_connect": "Could not reach the IDFM API.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "no_lines": "No line found for this transport mode.",
+      "no_stops": "No stop found for this line.",
+      "already_configured": "This tracker is already configured."
+    }
+  }
+}
