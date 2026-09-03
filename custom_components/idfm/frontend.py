@@ -14,6 +14,11 @@ _LOGGER = logging.getLogger(__name__)
 URL_BASE = "/idfm_files"
 CARD_FILES = ["idfm-traffic-card.js", "idfm-departures-card.js"]
 
+# Bump on every change to the card JS files: it's appended as a cache-busting
+# query string so browsers can't keep serving a stale cached copy of the URL
+# (the static files are otherwise served with a long max-age).
+CARD_VERSION = "2"
+
 _registered = False
 
 
@@ -28,14 +33,14 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
         from homeassistant.components.http import StaticPathConfig
 
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(URL_BASE, www_dir, True)]
+            [StaticPathConfig(URL_BASE, www_dir, False)]
         )
     except ImportError:
         # Home Assistant < 2024.7 fallback.
-        hass.http.register_static_path(URL_BASE, www_dir, True)
+        hass.http.register_static_path(URL_BASE, www_dir, False)
 
     for filename in CARD_FILES:
-        add_extra_js_url(hass, f"{URL_BASE}/{filename}")
+        add_extra_js_url(hass, f"{URL_BASE}/{filename}?v={CARD_VERSION}")
 
     hass.http.register_view(IdfmIconView(hass))
 

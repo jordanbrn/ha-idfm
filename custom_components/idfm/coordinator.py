@@ -19,18 +19,19 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# InfoChannelRef values seen on the IDFM general-message feed. "Commercial" messages
-# are marketing/promotional and are not traffic status, so they are ignored.
-IGNORED_CHANNELS = {"Commercial"}
+# InfoChannelRef values seen on the IDFM general-message feed. Only "Perturbation" is
+# an actual ongoing incident; "Information" is mostly advance notice for works spanning
+# weeks (not "current state"), and "Commercial" is marketing - both are ignored.
+ALLOWED_CHANNELS = {"Perturbation"}
 CHANNEL_SEVERITY = {"Perturbation": 0, "Information": 1}
 
 
 def active_messages(messages: list, now: datetime | None = None) -> list:
-    """Return the currently-valid, non-commercial messages (matches station screens)."""
+    """Return the currently-active service disruptions (matches station screens)."""
     now = now or datetime.now(timezone.utc)
     active = []
     for msg in messages:
-        if msg.type in IGNORED_CHANNELS:
+        if msg.type not in ALLOWED_CHANNELS:
             continue
         if msg.start_time.astimezone(timezone.utc) <= now <= msg.end_time.astimezone(
             timezone.utc
