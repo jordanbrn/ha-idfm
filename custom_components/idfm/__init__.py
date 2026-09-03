@@ -22,6 +22,7 @@ from .const import (
 )
 from .coordinator import IdfmDeparturesCoordinator, IdfmTrafficCoordinator
 from .frontend import async_register_frontend
+from .lovelace_resources import async_ensure_lovelace_resources
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await async_register_frontend(hass)
+        await async_ensure_lovelace_resources(hass)
     except Exception:  # noqa: BLE001 - the cards are a bonus, sensors must not fail
         _LOGGER.exception("failed to register IDFM Lovelace cards")
 
