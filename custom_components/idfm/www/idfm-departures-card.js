@@ -87,23 +87,27 @@ class IdfmDeparturesCard extends HTMLElement {
         border-bottom: 1px solid var(--divider-color);
       }
       .idfm-departure-row:last-child { border-bottom: none; }
-      .idfm-departure-row.next { background: var(--primary-color); }
+      .idfm-departure-row.next {
+        background: var(--idfm-row-accent, var(--primary-color));
+      }
       .idfm-time { flex: none; min-width: 44px; font-weight: 700; font-size: 14px;
         color: var(--primary-text-color); }
       .idfm-departure-row.next .idfm-time,
-      .idfm-departure-row.next .idfm-dest { color: var(--text-primary-color, #fff); }
+      .idfm-departure-row.next .idfm-dest,
+      .idfm-departure-row.next .idfm-mission,
+      .idfm-departure-row.next .idfm-platform {
+        color: var(--idfm-row-accent-text, var(--text-primary-color, #fff));
+      }
       .idfm-mission { flex: none; font-family: var(--code-font-family, monospace);
         font-weight: 700; font-size: 12px; letter-spacing: 0.5px;
         color: var(--secondary-text-color); }
-      .idfm-departure-row.next .idfm-mission { color: var(--text-primary-color, #fff); }
       .idfm-dest { flex: 1; min-width: 0; font-size: 13px; color: var(--secondary-text-color);
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .idfm-departure-row.next .idfm-dest { opacity: 0.9; }
+      .idfm-departure-row.next .idfm-platform { border-color: rgba(255, 255, 255, 0.5); }
       .idfm-platform { flex: none; font-size: 11px; font-weight: 600;
         color: var(--secondary-text-color); border: 1px solid var(--divider-color);
         border-radius: 6px; padding: 2px 6px; }
-      .idfm-departure-row.next .idfm-platform {
-        color: var(--text-primary-color, #fff); border-color: rgba(255, 255, 255, 0.5); }
       .idfm-empty { padding: 10px 12px; color: var(--secondary-text-color); font-size: 13px; }
     `;
 
@@ -171,6 +175,8 @@ class IdfmDeparturesCard extends HTMLElement {
       }
 
       const list = row.querySelector(".idfm-departure-list");
+      list.style.setProperty("--idfm-row-accent", color);
+      list.style.setProperty("--idfm-row-accent-text", textColor);
       const departures = (attrs.departures || []).slice(0, this._count);
       if (departures.length === 0) {
         list.innerHTML = '<div class="idfm-empty">Aucun départ prévu</div>';
