@@ -24,12 +24,6 @@ SCAN_INTERVAL_DEPARTURES = 60
 STATE_NORMAL = "normal"
 STATE_INFO = "info"
 STATE_DISRUPTED = "perturbe"
-STATE_BLOCKING = "bloque"
-
-# Navitia disruption "effect" values that are considered service-blocking.
-BLOCKING_EFFECTS = {"NO_SERVICE", "DETOUR", "STOP_MOVED", "REDUCED_SERVICE"}
-# Effects considered a lighter disruption rather than just an informational note.
-DISRUPTED_EFFECTS = {"SIGNIFICANT_DELAYS", "MODIFIED_SERVICE", "UNKNOWN_EFFECT"}
 
 MODE_ICONS = {
     "metro": "mdi:subway-variant",
@@ -46,8 +40,7 @@ ATTR_COLOR = "color"
 ATTR_TEXT_COLOR = "text_color"
 ATTR_MESSAGE = "message"
 ATTR_TITLE = "title"
-ATTR_SEVERITY = "severity"
-ATTR_EFFECT = "effect"
+ATTR_CHANNEL = "channel"
 ATTR_DISRUPTION_COUNT = "disruption_count"
 
 ATTR_STOP_NAME = "stop_name"

@@ -7,6 +7,8 @@ from pathlib import Path
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.core import HomeAssistant
 
+from .icon_view import IdfmIconView
+
 _LOGGER = logging.getLogger(__name__)
 
 URL_BASE = "/idfm_files"
@@ -35,3 +37,5 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
 
     for filename in CARD_FILES:
         add_extra_js_url(hass, f"{URL_BASE}/{filename}")
+
+    hass.http.register_view(IdfmIconView(hass))

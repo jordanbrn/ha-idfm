@@ -9,12 +9,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from idfm_api import IDFMApi
 
 from .const import (
-    BLOCKING_EFFECTS,
-    DISRUPTED_EFFECTS,
     DOMAIN,
     SCAN_INTERVAL_DEPARTURES,
     SCAN_INTERVAL_TRAFFIC,
-    STATE_BLOCKING,
     STATE_DISRUPTED,
     STATE_INFO,
     STATE_NORMAL,
@@ -22,28 +19,38 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# InfoChannelRef values seen on the IDFM general-message feed. "Commercial" messages
+# are marketing/promotional and are not traffic status, so they are ignored.
+IGNORED_CHANNELS = {"Commercial"}
+CHANNEL_SEVERITY = {"Perturbation": 0, "Information": 1}
 
-def active_disruptions(reports: list, now: datetime | None = None) -> list:
-    """Return the reports that have an application period covering now."""
+
+def active_messages(messages: list, now: datetime | None = None) -> list:
+    """Return the currently-valid, non-commercial messages (matches station screens)."""
     now = now or datetime.now(timezone.utc)
     active = []
-    for report in reports:
-        for start, end in report.periods:
-            if start.astimezone(timezone.utc) <= now <= end.astimezone(timezone.utc):
-                active.append(report)
-                break
+    for msg in messages:
+        if msg.type in IGNORED_CHANNELS:
+            continue
+        if msg.start_time.astimezone(timezone.utc) <= now <= msg.end_time.astimezone(
+            timezone.utc
+        ):
+            active.append(msg)
     return active
 
 
-def worst_report(reports: list):
-    """Return the most severe report (lowest severity value = highest priority)."""
-    return sorted(reports, key=lambda r: r.severity)[0] if reports else None
+def worst_message(messages: list):
+    """Return the most relevant message: perturbations first, then most recent."""
+    if not messages:
+        return None
+    return sorted(
+        messages,
+        key=lambda m: (CHANNEL_SEVERITY.get(m.type, 1), -m.start_time.timestamp()),
+    )[0]
 
 
-def status_for_effect(effect: str | None) -> str:
-    if effect in BLOCKING_EFFECTS:
-        return STATE_BLOCKING
-    if effect in DISRUPTED_EFFECTS:
+def status_for_channel(channel: str | None) -> str:
+    if channel == "Perturbation":
         return STATE_DISRUPTED
     return STATE_INFO
 
@@ -63,9 +70,9 @@ class IdfmTrafficCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         try:
-            return await self.api.get_line_reports(self.line_id, exclude_elevator=True)
+            return await self.api.get_infos(self.line_id)
         except Exception as err:  # noqa: BLE001 - surfaced to the coordinator
-            raise UpdateFailed(f"error fetching IDFM line reports: {err}") from err
+            raise UpdateFailed(f"error fetching IDFM traffic messages: {err}") from err
 
 
 class IdfmDeparturesCoordinator(DataUpdateCoordinator):

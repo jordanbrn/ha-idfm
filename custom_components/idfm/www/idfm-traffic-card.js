@@ -32,7 +32,7 @@ class IdfmTrafficCard extends HTMLElement {
     const style = document.createElement("style");
     style.textContent = `
       .idfm-list { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
-      .idfm-row { display: flex; align-items: center; gap: 12px; }
+      .idfm-row { display: flex; align-items: flex-start; gap: 12px; }
       .idfm-badge {
         flex: none; width: 40px; height: 40px; border-radius: 10px;
         display: flex; align-items: center; justify-content: center;
@@ -43,8 +43,7 @@ class IdfmTrafficCard extends HTMLElement {
         padding-left: 10px; }
       .idfm-line { font-weight: 600; color: var(--primary-text-color); font-size: 14px; }
       .idfm-message { color: var(--secondary-text-color); font-size: 13px; margin-top: 2px;
-        overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
-        -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        white-space: normal; word-break: break-word; }
       .idfm-empty { padding: 16px; color: var(--secondary-text-color); }
     `;
 
@@ -104,6 +103,23 @@ class IdfmTrafficCard extends HTMLElement {
     }
   }
 
+  _renderImageBadge(badge, src, alt) {
+    badge.style.background = "transparent";
+    badge.style.overflow = "visible";
+    badge.innerHTML = `<img src="${src}" alt="${alt || ""}" style="width:100%;height:100%;object-fit:contain;" />`;
+  }
+
+  _renderTextBadge(badge, shortName, color, textColor, mode) {
+    badge.style.background = color;
+    badge.style.color = textColor;
+    badge.style.overflow = "hidden";
+    if (shortName && shortName.length <= 3) {
+      badge.innerHTML = shortName;
+    } else {
+      badge.innerHTML = `<ha-icon icon="${IdfmTrafficCard._modeIcon(mode)}"></ha-icon>`;
+    }
+  }
+
   _update() {
     if (!this._hass) return;
 
@@ -125,13 +141,18 @@ class IdfmTrafficCard extends HTMLElement {
       const statusColor = IdfmTrafficCard._statusColor(stateObj.state);
 
       const badge = row.querySelector(".idfm-badge");
-      badge.style.background = color;
-      badge.style.color = textColor;
-      if (shortName && shortName.length <= 3) {
-        badge.textContent = shortName;
-        badge.innerHTML = shortName;
+      const picture = attrs.entity_picture;
+      if (picture) {
+        const src = this._hass.hassUrl ? this._hass.hassUrl(picture) : picture;
+        this._renderImageBadge(badge, src, shortName);
+        const img = badge.querySelector("img");
+        img.addEventListener(
+          "error",
+          () => this._renderTextBadge(badge, shortName, color, textColor, attrs.mode),
+          { once: true }
+        );
       } else {
-        badge.innerHTML = `<ha-icon icon="${IdfmTrafficCard._modeIcon(attrs.mode)}"></ha-icon>`;
+        this._renderTextBadge(badge, shortName, color, textColor, attrs.mode);
       }
 
       row.querySelector(".idfm-line").textContent = attrs.line_name || shortName;

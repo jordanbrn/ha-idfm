@@ -36,8 +36,11 @@ Ajoutez l'intégration **une fois par élément à suivre** :
 - pour les départs : la station, puis éventuellement une direction/destination précise.
 
 Chaque ajout crée une entité `sensor.*` :
-- **Trafic** : état = `normal` / `info` / `perturbe` / `bloque`, avec les attributs
-  `line_name`, `short_name`, `color`, `text_color`, `message`, `severity`, `effect`.
+- **Trafic** : état = `normal` / `info` / `perturbe`, avec les attributs
+  `line_name`, `short_name`, `color`, `text_color`, `message`, `title`, `channel`.
+  Le message provient du flux SIRI *GeneralMessage* ("Messages affichés sur les écrans"),
+  le même flux que celui utilisé sur les afficheurs en gare/station : seuls les messages
+  actuellement valides sont remontés (pas les avis de travaux à venir).
 - **Départs** : état = minutes avant le prochain départ, avec l'attribut `departures`
   (liste des 3 prochains passages : `destination`, `minutes`, `formatted`).
 

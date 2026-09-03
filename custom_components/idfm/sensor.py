@@ -9,17 +9,16 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
+    ATTR_CHANNEL,
     ATTR_COLOR,
     ATTR_DEPARTURES,
     ATTR_DESTINATION,
     ATTR_DIRECTION,
     ATTR_DISRUPTION_COUNT,
-    ATTR_EFFECT,
     ATTR_LINE_ID,
     ATTR_LINE_NAME,
     ATTR_MESSAGE,
     ATTR_MODE,
-    ATTR_SEVERITY,
     ATTR_SHORT_NAME,
     ATTR_STOP_NAME,
     ATTR_TEXT_COLOR,
@@ -40,9 +39,9 @@ from .const import (
 from .coordinator import (
     IdfmDeparturesCoordinator,
     IdfmTrafficCoordinator,
-    active_disruptions,
-    status_for_effect,
-    worst_report,
+    active_messages,
+    status_for_channel,
+    worst_message,
 )
 from .lines import LineInfoRepository
 
@@ -72,19 +71,21 @@ class IdfmTrafficSensor(CoordinatorEntity[IdfmTrafficCoordinator], SensorEntity)
         self._line_info: dict = {}
 
     @property
+    def entity_picture(self) -> str:
+        line_id = self._entry.data[CONF_LINE]
+        return f"/api/idfm/icon/{line_id}?style=colored&usage=signage_spaces"
+
+    @property
     def native_value(self) -> str:
-        reports = self.coordinator.data or []
-        active = active_disruptions(reports)
+        active = active_messages(self.coordinator.data or [])
         if not active:
             return STATE_NORMAL
-        worst = worst_report(active)
-        return status_for_effect(worst.effect)
+        return status_for_channel(worst_message(active).type)
 
     @property
     def extra_state_attributes(self) -> dict:
-        reports = self.coordinator.data or []
-        active = active_disruptions(reports)
-        worst = worst_report(active)
+        active = active_messages(self.coordinator.data or [])
+        worst = worst_message(active)
 
         line_id = self._entry.data[CONF_LINE]
         line_info = self._line_info
@@ -102,13 +103,11 @@ class IdfmTrafficSensor(CoordinatorEntity[IdfmTrafficCoordinator], SensorEntity)
         if worst is not None:
             attrs[ATTR_MESSAGE] = worst.message or worst.name
             attrs[ATTR_TITLE] = worst.name
-            attrs[ATTR_SEVERITY] = worst.severity
-            attrs[ATTR_EFFECT] = worst.effect
+            attrs[ATTR_CHANNEL] = worst.type
         else:
             attrs[ATTR_MESSAGE] = "Trafic normal"
             attrs[ATTR_TITLE] = ""
-            attrs[ATTR_SEVERITY] = None
-            attrs[ATTR_EFFECT] = None
+            attrs[ATTR_CHANNEL] = None
 
         return attrs
 
