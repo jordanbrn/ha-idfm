@@ -21,6 +21,14 @@ KIND_DEPARTURES = "departures"
 SCAN_INTERVAL_TRAFFIC = 180
 SCAN_INTERVAL_DEPARTURES = 60
 
+# Daily PRIM quotas per token (defaults of accounts created since March 2024), minus a
+# margin for the config flow and anything else using the same token. Raise them here
+# if PRIM granted you a higher quota ("Ma consommation API" on the PRIM portal).
+API_STOP_MONITORING = "stop-monitoring"
+API_GENERAL_MESSAGE = "general-message"
+QUOTA_STOP_MONITORING = 950
+QUOTA_GENERAL_MESSAGE = 19000
+
 STATE_NORMAL = "normal"
 STATE_INFO = "info"
 STATE_DISRUPTED = "perturbe"

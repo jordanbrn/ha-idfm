@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from idfm_api import IDFMApi
 
+from .budget import RequestBudget, StatusTrackingSession
 from .const import (
     DOMAIN,
     SCAN_INTERVAL_DEPARTURES,
@@ -59,6 +61,11 @@ def worst_message(messages: list):
     )[0]
 
 
+def _rate_limited(api: IDFMApi) -> bool:
+    session = getattr(api, "_session", None)
+    return isinstance(session, StatusTrackingSession) and session.last_status == 429
+
+
 def status_for_channel(channel: str | None) -> str:
     if channel == "Perturbation":
         return STATE_DISRUPTED
@@ -68,8 +75,11 @@ def status_for_channel(channel: str | None) -> str:
 class IdfmTrafficCoordinator(DataUpdateCoordinator):
     """Fetches disruption reports for a single line."""
 
-    def __init__(self, hass: HomeAssistant, api: IDFMApi, line_id: str) -> None:
+    def __init__(
+        self, hass: HomeAssistant, api: IDFMApi, budget: RequestBudget, line_id: str
+    ) -> None:
         self.api = api
+        self.budget = budget
         self.line_id = line_id
         super().__init__(
             hass,
@@ -79,10 +89,20 @@ class IdfmTrafficCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
+        if not self.budget.try_acquire():
+            if self.data is None:
+                raise UpdateFailed("IDFM traffic quota reached")
+            return self.data
         try:
-            return await self.api.get_infos(self.line_id)
+            data = await self.api.get_infos(self.line_id)
         except Exception as err:  # noqa: BLE001 - surfaced to the coordinator
+            if _rate_limited(self.api):
+                self.budget.report_rate_limited()
+                if self.data is not None:
+                    return self.data
             raise UpdateFailed(f"error fetching IDFM traffic messages: {err}") from err
+        self.budget.report_success()
+        return data
 
 
 class IdfmDeparturesCoordinator(DataUpdateCoordinator):
@@ -92,31 +112,74 @@ class IdfmDeparturesCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         api: IDFMApi,
+        budget: RequestBudget,
         stop_id: str,
         line_id: str | None,
         directions: list[str],
         destinations: list[str],
     ) -> None:
         self.api = api
+        self.budget = budget
         self.stop_id = stop_id
         self.line_id = line_id
         self.directions = directions
         self.destinations = destinations
+        self._last_fetch: float | None = None
+        self._visits: list | None = None
+        # No periodic polling by default: it only runs while a dashboard card is
+        # actually showing this sensor (see async_set_active / websocket.py), so
+        # idle dashboards don't burn the IDFM API quota.
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_departures_{stop_id}_{line_id}",
-            update_interval=timedelta(seconds=SCAN_INTERVAL_DEPARTURES),
+            update_interval=None,
         )
 
+    @callback
+    def async_set_active(self, active: bool) -> None:
+        """Start or stop periodic polling."""
+        if active == (self.update_interval is not None):
+            return
+        if not active:
+            self.update_interval = None
+            self._unschedule_refresh()
+            return
+
+        self.update_interval = timedelta(seconds=SCAN_INTERVAL_DEPARTURES)
+        stale = (
+            self._last_fetch is None
+            or monotonic() - self._last_fetch >= SCAN_INTERVAL_DEPARTURES
+        )
+        if stale:
+            # Debounced, so flipping tabs back and forth can't spam the API.
+            self.hass.async_create_task(self.async_request_refresh())
+        else:
+            self._schedule_refresh()
+
     async def _async_update_data(self):
-        try:
-            # No filter is passed to the API - a stop/line can have more than one
-            # direction or destination selected, and the API only supports a single
-            # value each, so all visits are fetched and filtered here instead.
-            visits = await self.api.get_traffic(self.stop_id, line_id=self.line_id)
-        except Exception as err:  # noqa: BLE001 - surfaced to the coordinator
-            raise UpdateFailed(f"error fetching IDFM departures: {err}") from err
+        if self.budget.try_acquire():
+            self._last_fetch = monotonic()
+            try:
+                # No filter is passed to the API - a stop/line can have more than one
+                # direction or destination selected, and the API only supports a
+                # single value each, so all visits are fetched and filtered here.
+                self._visits = (
+                    await self.api.get_traffic(self.stop_id, line_id=self.line_id)
+                ) or []
+            except Exception as err:  # noqa: BLE001 - surfaced to the coordinator
+                if not _rate_limited(self.api):
+                    raise UpdateFailed(f"error fetching IDFM departures: {err}") from err
+                self.budget.report_rate_limited()
+                if self._visits is None:
+                    raise UpdateFailed("IDFM departures rate limited") from err
+            else:
+                self.budget.report_success()
+        elif self._visits is None:
+            raise UpdateFailed("IDFM departures quota reached")
+        # Quota spent: the last fetched timetable is reused, so the minutes keep
+        # counting down (and passed departures drop off) without any request.
+        visits = self._visits
 
         has_filters = bool(self.directions or self.destinations)
         now = datetime.now(timezone.utc)

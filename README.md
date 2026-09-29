@@ -69,7 +69,14 @@ Chaque carte accepte aussi un simple `entity: sensor.xxx` pour une seule ligne/s
 
 ## Notes
 
-- Le trafic est rafraîchi toutes les 3 minutes, les départs toutes les minutes.
+- Le trafic est rafraîchi toutes les 3 minutes. Les départs sont rafraîchis toutes les
+  minutes **uniquement quand une carte `idfm-departures-card` les affiche à l'écran**
+  (onglet visible et carte dans la zone affichée) ; sinon aucune requête n'est faite.
+  Pour une automatisation, forcez une mise à jour avec `homeassistant.update_entity`.
+- Les quotas PRIM (par token, sur 24h glissantes) sont comptés localement et ne sont
+  jamais dépassés : 950 requêtes de départs et 19 000 de trafic par défaut
+  (`QUOTA_*` dans `const.py`, à relever si PRIM vous a accordé plus). Une fois le quota
+  atteint, les dernières données sont conservées et les minutes continuent de défiler.
 - Les couleurs et noms courts de ligne proviennent du jeu de données ouvert IDFM
   *Référentiel des lignes* (mis en cache après le premier appel).
 - Cette intégration n'est pas affiliée à Île-de-France Mobilités.

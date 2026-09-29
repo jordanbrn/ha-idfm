@@ -7,6 +7,7 @@ class IdfmDeparturesCard extends HTMLElement {
     this._entities = config.entities || [config.entity];
     this._count = config.count || 3;
     this._built = false;
+    this._syncSubscriptions();
   }
 
   set hass(hass) {
@@ -16,6 +17,62 @@ class IdfmDeparturesCard extends HTMLElement {
       this._built = true;
     }
     this._update();
+    this._syncSubscriptions();
+  }
+
+  // The backend only polls IDFM while at least one card showing the sensor is
+  // on screen: subscribe while visible, unsubscribe as soon as it isn't.
+  connectedCallback() {
+    this._connected = true;
+    if (!this._visibilityHandler) {
+      this._visibilityHandler = () => this._syncSubscriptions();
+    }
+    document.addEventListener("visibilitychange", this._visibilityHandler);
+    if ("IntersectionObserver" in window) {
+      if (!this._observer) {
+        this._observer = new IntersectionObserver((entries) => {
+          this._inView = entries[entries.length - 1].isIntersecting;
+          this._syncSubscriptions();
+        });
+      }
+      this._observer.observe(this);
+    } else {
+      this._inView = true;
+    }
+    this._syncSubscriptions();
+  }
+
+  disconnectedCallback() {
+    this._connected = false;
+    this._inView = false;
+    document.removeEventListener("visibilitychange", this._visibilityHandler);
+    if (this._observer) this._observer.disconnect();
+    this._syncSubscriptions();
+  }
+
+  _syncSubscriptions() {
+    if (!this._subs) this._subs = new Map();
+    const visible =
+      this._connected && this._inView && document.visibilityState === "visible";
+    const wanted = new Set(visible && this._hass && this._entities ? this._entities : []);
+
+    for (const [entityId, unsubPromise] of this._subs) {
+      if (wanted.has(entityId)) continue;
+      this._subs.delete(entityId);
+      unsubPromise.then((unsub) => unsub && unsub()).catch(() => {});
+    }
+    for (const entityId of wanted) {
+      if (this._subs.has(entityId)) continue;
+      this._subs.set(
+        entityId,
+        this._hass.connection
+          .subscribeMessage(() => {}, {
+            type: "idfm/departures/subscribe",
+            entity_id: entityId,
+          })
+          .catch(() => null)
+      );
+    }
   }
 
   getCardSize() {
@@ -132,6 +189,8 @@ class IdfmDeparturesCard extends HTMLElement {
     card.appendChild(style);
     card.appendChild(stops);
     this.innerHTML = "";
+    // Block box so the IntersectionObserver sees the card's real bounds.
+    this.style.display = "block";
     this.appendChild(card);
     this._card = card;
   }
