@@ -25,13 +25,14 @@ SCAN_INTERVAL_DEPARTURES = 60
 # margin for the config flow and anything else using the same token. Raise them here
 # if PRIM granted you a higher quota ("Ma consommation API" on the PRIM portal).
 API_STOP_MONITORING = "stop-monitoring"
-API_GENERAL_MESSAGE = "general-message"
+API_LINE_REPORTS = "line-reports"
 QUOTA_STOP_MONITORING = 950
-QUOTA_GENERAL_MESSAGE = 19000
+QUOTA_LINE_REPORTS = 950
 
 STATE_NORMAL = "normal"
 STATE_INFO = "info"
 STATE_DISRUPTED = "perturbe"
+STATE_INTERRUPTED = "interrompu"
 
 MODE_ICONS = {
     "metro": "mdi:subway-variant",
@@ -48,13 +49,15 @@ ATTR_COLOR = "color"
 ATTR_TEXT_COLOR = "text_color"
 ATTR_MESSAGE = "message"
 ATTR_TITLE = "title"
-ATTR_CHANNEL = "channel"
+ATTR_EFFECT = "effect"
+ATTR_SEVERITY = "severity"
 ATTR_DISRUPTION_COUNT = "disruption_count"
 
 ATTR_STOP_NAME = "stop_name"
 ATTR_DIRECTIONS = "directions"
 ATTR_DESTINATIONS = "destinations"
 ATTR_DEPARTURES = "departures"
+ATTR_FETCHED_AT = "fetched_at"
 
 LINES_DATASET_URL = (
     "https://data.iledefrance-mobilites.fr/explore/dataset/referentiel-des-lignes/"

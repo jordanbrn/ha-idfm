@@ -9,16 +9,18 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    ATTR_CHANNEL,
     ATTR_COLOR,
     ATTR_DEPARTURES,
     ATTR_DESTINATIONS,
     ATTR_DIRECTIONS,
     ATTR_DISRUPTION_COUNT,
+    ATTR_FETCHED_AT,
+    ATTR_EFFECT,
     ATTR_LINE_ID,
     ATTR_LINE_NAME,
     ATTR_MESSAGE,
     ATTR_MODE,
+    ATTR_SEVERITY,
     ATTR_SHORT_NAME,
     ATTR_STOP_NAME,
     ATTR_TEXT_COLOR,
@@ -39,9 +41,9 @@ from .const import (
 from .coordinator import (
     IdfmDeparturesCoordinator,
     IdfmTrafficCoordinator,
-    active_messages,
-    status_for_channel,
-    worst_message,
+    active_reports,
+    state_for_report,
+    worst_report,
 )
 from .lines import LineInfoRepository
 
@@ -77,15 +79,15 @@ class IdfmTrafficSensor(CoordinatorEntity[IdfmTrafficCoordinator], SensorEntity)
 
     @property
     def native_value(self) -> str:
-        active = active_messages(self.coordinator.data or [])
-        if not active:
+        worst = worst_report(active_reports(self.coordinator.data or []))
+        if worst is None:
             return STATE_NORMAL
-        return status_for_channel(worst_message(active).type)
+        return state_for_report(worst)
 
     @property
     def extra_state_attributes(self) -> dict:
-        active = active_messages(self.coordinator.data or [])
-        worst = worst_message(active)
+        active = active_reports(self.coordinator.data or [])
+        worst = worst_report(active)
 
         line_id = self._entry.data[CONF_LINE]
         line_info = self._line_info
@@ -103,11 +105,13 @@ class IdfmTrafficSensor(CoordinatorEntity[IdfmTrafficCoordinator], SensorEntity)
         if worst is not None:
             attrs[ATTR_MESSAGE] = worst.message or worst.name
             attrs[ATTR_TITLE] = worst.name
-            attrs[ATTR_CHANNEL] = worst.type
+            attrs[ATTR_EFFECT] = worst.effect
+            attrs[ATTR_SEVERITY] = worst.type
         else:
             attrs[ATTR_MESSAGE] = "Trafic normal"
             attrs[ATTR_TITLE] = ""
-            attrs[ATTR_CHANNEL] = None
+            attrs[ATTR_EFFECT] = None
+            attrs[ATTR_SEVERITY] = None
 
         return attrs
 
@@ -158,7 +162,12 @@ class IdfmDeparturesSensor(CoordinatorEntity[IdfmDeparturesCoordinator], SensorE
             ATTR_MODE: self._entry.data.get(CONF_MODE),
             ATTR_DIRECTIONS: self._entry.data.get(CONF_DIRECTIONS, []),
             ATTR_DESTINATIONS: self._entry.data.get(CONF_DESTINATIONS, []),
-            ATTR_DEPARTURES: departures[:10],
+            ATTR_DEPARTURES: _next_per_direction(departures),
+            ATTR_FETCHED_AT: (
+                self.coordinator.fetched_at.isoformat()
+                if self.coordinator.fetched_at
+                else None
+            ),
         }
 
     async def async_added_to_hass(self) -> None:
@@ -169,3 +178,16 @@ class IdfmDeparturesSensor(CoordinatorEntity[IdfmDeparturesCoordinator], SensorE
                 async_get_clientsession(self.hass), line_id
             )
             self.async_write_ha_state()
+
+
+def _next_per_direction(departures: list[dict], per_direction: int = 10) -> list[dict]:
+    """Keep the next few departures of each direction, so the card can group them
+    (a plain top 10 could all be in the busier direction)."""
+    counts: dict[str, int] = {}
+    kept = []
+    for departure in departures:
+        key = departure["direction"] or departure["destination"] or ""
+        if counts.get(key, 0) < per_direction:
+            counts[key] = counts.get(key, 0) + 1
+            kept.append(departure)
+    return kept

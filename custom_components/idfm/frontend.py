@@ -17,7 +17,7 @@ CARD_FILES = ["idfm-traffic-card.js", "idfm-departures-card.js"]
 # query string so browsers can't keep serving a stale cached copy of the URL
 # (the static files are otherwise served with a long max-age), and so the
 # Lovelace resource auto-registration knows to update the stored entry.
-CARD_VERSION = "4"
+CARD_VERSION = "7"
 
 _registered = False
 

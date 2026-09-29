@@ -8,9 +8,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from idfm_api import IDFMApi
 
-from .budget import StatusTrackingSession, async_get_budget
+from .budget import async_get_budget, async_get_session
 from .const import (
-    API_GENERAL_MESSAGE,
+    API_LINE_REPORTS,
     API_STOP_MONITORING,
     CONF_DESTINATIONS,
     CONF_DIRECTIONS,
@@ -22,7 +22,7 @@ from .const import (
     KIND_DEPARTURES,
     KIND_TRAFFIC,
     PLATFORMS,
-    QUOTA_GENERAL_MESSAGE,
+    QUOTA_LINE_REPORTS,
     QUOTA_STOP_MONITORING,
 )
 from .coordinator import IdfmDeparturesCoordinator, IdfmTrafficCoordinator
@@ -38,13 +38,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     session = async_get_clientsession(hass)
     token = entry.data[CONF_TOKEN]
-    api = IDFMApi(StatusTrackingSession(session), token)
+    api = IDFMApi(async_get_session(hass, session, token), token)
 
     kind = entry.data[CONF_KIND]
     if kind == KIND_TRAFFIC:
         budget = await async_get_budget(
-            hass, token, API_GENERAL_MESSAGE, QUOTA_GENERAL_MESSAGE
+            hass, token, API_LINE_REPORTS, QUOTA_LINE_REPORTS
         )
+        budget.pollers.add(entry.entry_id)
+        entry.async_on_unload(lambda: budget.pollers.discard(entry.entry_id))
         coordinator = IdfmTrafficCoordinator(hass, api, budget, entry.data[CONF_LINE])
     elif kind == KIND_DEPARTURES:
         budget = await async_get_budget(

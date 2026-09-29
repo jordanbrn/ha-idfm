@@ -36,11 +36,13 @@ Ajoutez l'intégration **une fois par élément à suivre** :
 - pour les départs : la station, puis éventuellement une direction/destination précise.
 
 Chaque ajout crée une entité `sensor.*` :
-- **Trafic** : état = `normal` / `info` / `perturbe`, avec les attributs
-  `line_name`, `short_name`, `color`, `text_color`, `message`, `title`, `channel`.
-  Le message provient du flux SIRI *GeneralMessage* ("Messages affichés sur les écrans"),
-  le même flux que celui utilisé sur les afficheurs en gare/station : seuls les messages
-  actuellement valides sont remontés (pas les avis de travaux à venir).
+- **Trafic** : état = `normal` / `info` / `perturbe` / `interrompu`, avec les attributs
+  `line_name`, `short_name`, `color`, `text_color`, `message`, `title`, `effect`,
+  `severity`. Les perturbations proviennent de l'API Navitia *line_reports* de PRIM :
+  `interrompu` = effet `NO_SERVICE`, `perturbe` = service réduit, retards importants,
+  déviation ou arrêt déplacé, `info` = autre message actif. Seules les perturbations
+  dont une période d'application est en cours comptent (des travaux de nuit ne passent
+  la ligne en `interrompu` que pendant la nuit).
 - **Départs** : état = minutes avant le prochain départ, avec l'attribut `departures`
   (liste des 3 prochains passages : `destination`, `minutes`, `formatted`).
 
@@ -69,12 +71,13 @@ Chaque carte accepte aussi un simple `entity: sensor.xxx` pour une seule ligne/s
 
 ## Notes
 
-- Le trafic est rafraîchi toutes les 3 minutes. Les départs sont rafraîchis toutes les
+- Le trafic est rafraîchi toutes les 3 minutes, plus lentement si beaucoup de lignes
+  partagent le token (l'intervalle est calculé pour tenir dans le quota). Les départs sont rafraîchis toutes les
   minutes **uniquement quand une carte `idfm-departures-card` les affiche à l'écran**
   (onglet visible et carte dans la zone affichée) ; sinon aucune requête n'est faite.
   Pour une automatisation, forcez une mise à jour avec `homeassistant.update_entity`.
 - Les quotas PRIM (par token, sur 24h glissantes) sont comptés localement et ne sont
-  jamais dépassés : 950 requêtes de départs et 19 000 de trafic par défaut
+  jamais dépassés : 950 requêtes de départs et 950 de trafic par défaut
   (`QUOTA_*` dans `const.py`, à relever si PRIM vous a accordé plus). Une fois le quota
   atteint, les dernières données sont conservées et les minutes continuent de défiler.
 - Les couleurs et noms courts de ligne proviennent du jeu de données ouvert IDFM

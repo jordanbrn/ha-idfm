@@ -85,7 +85,7 @@ class IdfmTrafficCard extends HTMLElement {
         return "#0288d1";
       case "perturbe":
         return "#ed6c02";
-      case "bloque":
+      case "interrompu":
         return "#c62828";
       default:
         return "var(--divider-color)";
@@ -100,7 +100,7 @@ class IdfmTrafficCard extends HTMLElement {
         return "Information trafic";
       case "perturbe":
         return "Trafic perturbé";
-      case "bloque":
+      case "interrompu":
         return "Trafic interrompu";
       default:
         return state;

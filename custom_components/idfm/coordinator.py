@@ -16,64 +16,66 @@ from .const import (
     SCAN_INTERVAL_TRAFFIC,
     STATE_DISRUPTED,
     STATE_INFO,
-    STATE_NORMAL,
+    STATE_INTERRUPTED,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-# InfoChannelRef values seen on the IDFM general-message feed. Only "Perturbation" is
-# an actual ongoing incident; "Information" is mostly advance notice for works spanning
-# weeks (not "current state"), and "Commercial" is marketing - both are ignored.
-ALLOWED_CHANNELS = {"Perturbation"}
-CHANNEL_SEVERITY = {"Perturbation": 0, "Information": 1}
+# Navitia severity effects (GTFS-RT "Effect") mapped to the sensor state. Anything not
+# listed (OTHER_EFFECT, ADDITIONAL_SERVICE, UNKNOWN_EFFECT...) is informational.
+EFFECT_STATES = {
+    "NO_SERVICE": STATE_INTERRUPTED,
+    "REDUCED_SERVICE": STATE_DISRUPTED,
+    "SIGNIFICANT_DELAYS": STATE_DISRUPTED,
+    "DETOUR": STATE_DISRUPTED,
+    "MODIFIED_SERVICE": STATE_DISRUPTED,
+    "STOP_MOVED": STATE_DISRUPTED,
+}
+STATE_RANK = {STATE_INTERRUPTED: 0, STATE_DISRUPTED: 1, STATE_INFO: 2}
 
-# IDFM tags multi-week planned-works campaigns as "Perturbation" too (they do genuinely
-# cut service, just only during certain hours each day), which a plain validity-window
-# check can't tell apart from a real ongoing incident. A live incident's window is a few
-# hours at most, so anything wider is treated as an advance notice, not current state.
-MAX_LIVE_DURATION = timedelta(hours=24)
+
+def state_for_report(report) -> str:
+    return EFFECT_STATES.get(report.effect, STATE_INFO)
 
 
-def active_messages(messages: list, now: datetime | None = None) -> list:
-    """Return the currently-active service disruptions (matches station screens)."""
+def active_reports(reports: list, now: datetime | None = None) -> list:
+    """Return the reports applying right now.
+
+    Planned works come with their actual application periods (e.g. every night from
+    22:00 to 05:00 for three weeks), so they only count while service is really cut.
+    """
     now = now or datetime.now(timezone.utc)
-    active = []
-    for msg in messages:
-        if msg.type not in ALLOWED_CHANNELS:
-            continue
-        start = msg.start_time.astimezone(timezone.utc)
-        end = msg.end_time.astimezone(timezone.utc)
-        if not (start <= now <= end):
-            continue
-        if end - start > MAX_LIVE_DURATION:
-            continue
-        active.append(msg)
-    return active
+    return [r for r in reports if any(begin <= now <= end for begin, end in r.periods)]
 
 
-def worst_message(messages: list):
-    """Return the most relevant message: perturbations first, then most recent."""
-    if not messages:
+def worst_report(reports: list):
+    """Return the most severe report: by state, then by Navitia priority (0 = top)."""
+    if not reports:
         return None
-    return sorted(
-        messages,
-        key=lambda m: (CHANNEL_SEVERITY.get(m.type, 1), -m.start_time.timestamp()),
-    )[0]
+    return min(
+        reports,
+        key=lambda r: (
+            STATE_RANK[state_for_report(r)],
+            r.severity if r.severity is not None else 99,
+        ),
+    )
 
 
-def _rate_limited(api: IDFMApi) -> bool:
+def _last_status(api: IDFMApi) -> int | None:
     session = getattr(api, "_session", None)
-    return isinstance(session, StatusTrackingSession) and session.last_status == 429
+    return session.last_status if isinstance(session, StatusTrackingSession) else None
 
 
-def status_for_channel(channel: str | None) -> str:
-    if channel == "Perturbation":
-        return STATE_DISRUPTED
-    return STATE_INFO
+def _rate_limit_headers(api: IDFMApi) -> dict | None:
+    """Return the 429 response headers if the last request was rate limited."""
+    session = getattr(api, "_session", None)
+    if isinstance(session, StatusTrackingSession) and session.last_status == 429:
+        return session.last_headers
+    return None
 
 
 class IdfmTrafficCoordinator(DataUpdateCoordinator):
-    """Fetches disruption reports for a single line."""
+    """Fetches the Navitia disruption reports for a single line."""
 
     def __init__(
         self, hass: HomeAssistant, api: IDFMApi, budget: RequestBudget, line_id: str
@@ -85,24 +87,40 @@ class IdfmTrafficCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=f"{DOMAIN}_traffic_{line_id}",
-            update_interval=timedelta(seconds=SCAN_INTERVAL_TRAFFIC),
+            update_interval=timedelta(seconds=budget.poll_interval(SCAN_INTERVAL_TRAFFIC)),
         )
 
     async def _async_update_data(self):
+        # Every line polls on its own, so the more lines share the token, the slower
+        # each one goes (e.g. 5 lines on a 950/day quota: every ~7.5 min).
+        self.update_interval = timedelta(
+            seconds=self.budget.poll_interval(SCAN_INTERVAL_TRAFFIC)
+        )
         if not self.budget.try_acquire():
             if self.data is None:
                 raise UpdateFailed("IDFM traffic quota reached")
             return self.data
         try:
-            data = await self.api.get_infos(self.line_id)
+            reports = await self.api.get_line_reports(self.line_id)
         except Exception as err:  # noqa: BLE001 - surfaced to the coordinator
-            if _rate_limited(self.api):
-                self.budget.report_rate_limited()
-                if self.data is not None:
-                    return self.data
-            raise UpdateFailed(f"error fetching IDFM traffic messages: {err}") from err
+            reports, error = None, err
+        else:
+            error = None
+
+        # idfm_api returns an empty list (i.e. "no disruption") on any HTTP error for
+        # Navitia calls, so the status has to be checked here rather than trusted.
+        status = _last_status(self.api)
+        if status == 429:
+            self.budget.report_rate_limited(_rate_limit_headers(self.api))
+            if self.data is not None:
+                return self.data
+            raise UpdateFailed("IDFM traffic rate limited")
+        if error is not None:
+            raise UpdateFailed(f"error fetching IDFM line reports: {error}") from error
+        if status is not None and status != 200:
+            raise UpdateFailed(f"error fetching IDFM line reports: HTTP {status}")
         self.budget.report_success()
-        return data
+        return reports
 
 
 class IdfmDeparturesCoordinator(DataUpdateCoordinator):
@@ -126,6 +144,9 @@ class IdfmDeparturesCoordinator(DataUpdateCoordinator):
         self.destinations = destinations
         self._last_fetch: float | None = None
         self._visits: list | None = None
+        # When the timetable was last actually fetched from IDFM (the minutes are
+        # recomputed more often than that from the cached timetable).
+        self.fetched_at: datetime | None = None
         # No periodic polling by default: it only runs while a dashboard card is
         # actually showing this sensor (see async_set_active / websocket.py), so
         # idle dashboards don't burn the IDFM API quota.
@@ -168,12 +189,13 @@ class IdfmDeparturesCoordinator(DataUpdateCoordinator):
                     await self.api.get_traffic(self.stop_id, line_id=self.line_id)
                 ) or []
             except Exception as err:  # noqa: BLE001 - surfaced to the coordinator
-                if not _rate_limited(self.api):
+                if (headers := _rate_limit_headers(self.api)) is None:
                     raise UpdateFailed(f"error fetching IDFM departures: {err}") from err
-                self.budget.report_rate_limited()
+                self.budget.report_rate_limited(headers)
                 if self._visits is None:
                     raise UpdateFailed("IDFM departures rate limited") from err
             else:
+                self.fetched_at = datetime.now(timezone.utc)
                 self.budget.report_success()
         elif self._visits is None:
             raise UpdateFailed("IDFM departures quota reached")

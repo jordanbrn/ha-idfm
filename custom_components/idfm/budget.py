@@ -5,7 +5,7 @@ import asyncio
 import hashlib
 import logging
 from collections import deque
-from time import time
+from time import monotonic, time
 
 from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant, callback
@@ -21,11 +21,17 @@ _LOGGER = logging.getLogger(__name__)
 WINDOW = 24 * 3600
 STORAGE_VERSION = 1
 SAVE_DELAY = 60
-# After PRIM itself answers 429, stop calling it for a while instead of hammering it.
-SERVER_BACKOFF = 15 * 60
+# After PRIM itself answers 429, stop calling it for a while instead of hammering it,
+# doubling the pause on each consecutive 429.
+BACKOFF_MIN = 60
+BACKOFF_MAX = 15 * 60
+# PRIM also rate-limits bursts (e.g. every line refreshing at once on HA startup), so
+# requests on a token are sent one at a time, this many seconds apart at least.
+MIN_REQUEST_SPACING = 1.0
 
 _BUDGETS_KEY = f"{DOMAIN}_budgets"
 _LOCK_KEY = f"{DOMAIN}_budgets_lock"
+_THROTTLES_KEY = f"{DOMAIN}_throttles"
 
 
 class RequestBudget:
@@ -39,6 +45,9 @@ class RequestBudget:
         self._calls: deque[float] = deque()
         self._warned = False
         self._paused_until = 0.0
+        self._backoff = 0
+        # Entries polling on a fixed interval through this budget (traffic lines).
+        self.pollers: set[str] = set()
         self._quota_notification_id = f"{DOMAIN}_quota_{key}_{api}"
         self._rate_limit_notification_id = f"{DOMAIN}_rate_limited_{key}_{api}"
 
@@ -56,6 +65,10 @@ class RequestBudget:
     def used(self) -> int:
         self._prune()
         return len(self._calls)
+
+    def poll_interval(self, base: int) -> int:
+        """Polling interval keeping every poller on this budget within the quota."""
+        return max(base, -(-len(self.pollers) * WINDOW // self.limit))
 
     @callback
     def try_acquire(self) -> bool:
@@ -95,61 +108,106 @@ class RequestBudget:
         return True
 
     @callback
-    def report_rate_limited(self) -> None:
+    def report_rate_limited(self, headers: dict | None = None) -> None:
         """PRIM answered 429: back off and tell the user."""
-        first = self._paused_until == 0.0
-        self._paused_until = time() + SERVER_BACKOFF
+        first = self._backoff == 0
+        self._backoff = min(BACKOFF_MAX, max(BACKOFF_MIN, self._backoff * 2))
+        self._paused_until = time() + self._backoff
+        # Rate-limit / quota headers, to find out which PRIM limit was hit.
+        limit_headers = {
+            k: v
+            for k, v in (headers or {}).items()
+            if "limit" in k.lower() or "quota" in k.lower() or k.lower() == "retry-after"
+        }
+        _LOGGER.warning(
+            "IDFM refused a %s request (HTTP 429), retrying in %s s - headers: %s",
+            self.api,
+            self._backoff,
+            limit_headers,
+        )
         if not first:
             return
-        _LOGGER.warning(
-            "IDFM refused a %s request (HTTP 429), pausing for %s minutes",
-            self.api,
-            SERVER_BACKOFF // 60,
-        )
         persistent_notification.async_create(
             self.hass,
-            f"IDFM a refusé une requête `{self.api}` (HTTP 429, trop de requêtes) "
-            f"alors que l'intégration n'en a fait que {self.used} sur 24h. Le token "
-            "est peut-être utilisé ailleurs, ou le quota PRIM est plus bas que "
-            f"{self.limit}. Nouvel essai toutes les {SERVER_BACKOFF // 60} minutes, "
-            "les dernières données restent affichées.",
+            f"IDFM a refusé une requête `{self.api}` (HTTP 429, trop de requêtes). "
+            "Le quota journalier PRIM de ce token est probablement épuisé (requêtes "
+            "faites avant la mise à jour de l'intégration, ou token utilisé "
+            f"ailleurs) : l'intégration n'en compte que {self.used} sur 24h depuis "
+            "qu'elle les suit.\n\n"
+            "Les dernières données restent affichées, nouvel essai dans "
+            f"{BACKOFF_MIN // 60} min puis de plus en plus espacé (jusqu'à "
+            f"{BACKOFF_MAX // 60} min). La consommation réelle est visible dans "
+            "« Ma consommation API » sur le portail PRIM.",
             title="IDFM : limite de requêtes",
             notification_id=self._rate_limit_notification_id,
         )
 
     @callback
     def report_success(self) -> None:
-        if self._paused_until:
+        if self._backoff:
+            self._backoff = 0
             self._paused_until = 0.0
             persistent_notification.async_dismiss(
                 self.hass, self._rate_limit_notification_id
             )
 
 
+class RequestThrottle:
+    """Sends a token's requests one at a time, MIN_REQUEST_SPACING apart."""
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._last = 0.0
+
+    async def wait(self) -> None:
+        async with self._lock:
+            delay = self._last + MIN_REQUEST_SPACING - monotonic()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            self._last = monotonic()
+
+
 class StatusTrackingSession:
-    """Wraps the aiohttp session to expose the last HTTP status.
+    """Wraps the aiohttp session to throttle requests and expose the last status.
 
     idfm_api swallows the status code of failed responses, so a 429 would otherwise
     be indistinguishable from any other error.
     """
 
-    def __init__(self, session) -> None:
+    def __init__(self, session, throttle: RequestThrottle) -> None:
         self._session = session
+        self._throttle = throttle
         self.last_status: int | None = None
+        self.last_headers: dict = {}
 
     async def get(self, *args, **kwargs):
         self.last_status = None
+        self.last_headers = {}
+        await self._throttle.wait()
         response = await self._session.get(*args, **kwargs)
         self.last_status = response.status
+        self.last_headers = dict(response.headers)
         return response
+
+
+@callback
+def async_get_session(hass: HomeAssistant, session, token: str) -> StatusTrackingSession:
+    """Return a session wrapper sharing the throttle of every entry on this token."""
+    throttles: dict[str, RequestThrottle] = hass.data.setdefault(_THROTTLES_KEY, {})
+    throttle = throttles.setdefault(_token_key(token), RequestThrottle())
+    return StatusTrackingSession(session, throttle)
+
+
+def _token_key(token: str) -> str:
+    # Hash the token so it never ends up in a storage file name.
+    return hashlib.sha256(token.encode()).hexdigest()[:12]
 
 
 async def async_get_budget(
     hass: HomeAssistant, token: str, api: str, limit: int
 ) -> RequestBudget:
     """Return the budget shared by every entry using this token for this API."""
-    # Hash the token so it never ends up in a storage file name.
-    key = hashlib.sha256(token.encode()).hexdigest()[:12]
+    key = _token_key(token)
     budgets: dict[str, RequestBudget] = hass.data.setdefault(_BUDGETS_KEY, {})
     lock: asyncio.Lock = hass.data.setdefault(_LOCK_KEY, asyncio.Lock())
     async with lock:
